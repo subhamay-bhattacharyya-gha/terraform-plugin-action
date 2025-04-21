@@ -1,44 +1,44 @@
-name: 'Action Name'
-description: 'Action Description'
+name: 'Install and Cache Terraform Plugin'
 
+description: 'Installs Terraform plugin and cache it.'
 inputs:
-  input-1:
-    description: Input description.
+  caching:
+    description: 'Whether to cache dependies or not.'
     required: false
-    default: default-value
-  input-2:
-    description: Input description.
-    required: false
-    default: default-value
-  input-3:
-    description: Input description.
-    required: false
-    default: default-value
-  github-token:
-    description: 'GitHub token'
+    default: 'true'
+  tf-version:
+    description: 'The Terraform version to be used.'
     required: true
+    default: 1.4
+outputs:
+  used-cache:
+    description: 'Whether the cache was used.'
+    value: ${{ steps.install.outputs.cache }}
 
 runs:
   using: 'composite'
   steps:
-    - name: Set up Python
-      uses: actions/setup-python@v5
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3.1.2
       with:
-        python-version: 3.x
+        terraform_version: inputs.tf-version
 
-    - name: Sample step to call GitHub API
-      shell: bash
-      env:
-        GITHUB_TOKEN: ${{ inputs.github-token }}
+    - name: Cache Terraform
+      if: inputs.caching == 'true'
+      id: cache
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.terraform.d/plugin-cache
+        key: ${{ runner.os }}-terraform-${{ hashFiles('**/.terraform.lock.hcl') }}
+        restore-keys: |
+          ${{ runner.os }}-terraform-
+
+    - name: Config Terraform plugin cache
+      id: install
+      if: steps.cache.outputs.cache-hit != 'true' || inputs.caching != 'true'
       run: |
-        ISSUE_NUMBER="${{ github.event.issue.number }}"
-        REPO="${{ github.repository }}"
-        OWNER=$(echo $REPO | cut -d'/' -f1)
-        BRANCH_NAME="${{ steps.create-branch.outputs.branch-name }}"
-        COMMENT_BODY="Branch [$BRANCH_NAME](https://github.com/$OWNER/$REPO/tree/$BRANCH_NAME) created 🚀"
-
-        curl -s -X POST \
-          -H "Authorization: token $GITHUB_TOKEN" \
-          -H "Content-Type: application/json" \
-          -d "{\"body\": \"$COMMENT_BODY\"}" \
-          https://api.github.com/repos/$REPO/issues/$ISSUE_NUMBER/comments
+        echo 'plugin_cache_dir="$HOME/.terraform.d/plugin-cache"' >~/.terraformrc
+        mkdir --parents ~/.terraform.d/plugin-cache
+        echo "cache='${{ inputs.caching }}'" >> $GITHUB_OUTPUT
+      shell: bash
